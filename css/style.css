@@ -102,6 +102,26 @@ h3 {
   z-index: 1000;
 }
 
+/* Metamask round button in the upper right */
+#metamaskButton {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 50px;
+  height: 50px;
+  background: #4c0082a2;  /* Neon indigo matching the info button */
+  color: #fff;
+  border: 2px solid #00ffea;
+  border-radius: 50%;
+  box-shadow: 0 0 15px #00ffea, 0 0 30px #00ffea;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Modal container */
 .modal {
   display: none; /* Hidden by default */

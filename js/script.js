@@ -1,59 +1,56 @@
-import { create } from '@web3-storage/w3up-client';
+// js/script.js
 
-// Helper: Load all uploads by looping through paginated results.
+// Use the browser bundle exposed on window.w3up
+const { create } = window.w3up;
+
+// Helper: Load *all* uploads by paginating through upload.list
 async function loadAllUploads(client) {
-  let allUploads = [];
+  let all = [];
   let cursor = null;
   do {
-    const options = cursor ? { cursor } : {};
-    const res = await client.capability.upload.list(options);
-    let uploads = [];
-    if (res.results && Array.isArray(res.results)) {
-      uploads = res.results;
-    } else if (res.ok && Array.isArray(res.ok.results)) {
-      uploads = res.ok.results;
-    } else {
-      console.warn("Unexpected uploads structure:", res);
-    }
-    allUploads = allUploads.concat(uploads);
+    const opts = cursor ? { cursor } : {};
+    const res = await client.capability.upload.list(opts);
+    const batch = Array.isArray(res.results) ? res.results
+                : Array.isArray(res.ok?.results) ? res.ok.results
+                : [];
+    all.push(...batch);
     cursor = res.cursor || null;
   } while (cursor);
-  return allUploads;
+  return all;
 }
 
-// Helper: Fetch file list for a given directory CID using a CORS proxy.
-// We'll use ThingProxy (or an alternative) to bypass CORS issues.
-async function getFilesForCid(cid) {
-  const apiUrl = "https://thingproxy.freeboard.io/fetch/" +
-                 encodeURIComponent("https://w3s.link/api/v0/ls?arg=" + cid);
-  console.log("Fetching files using URL:", apiUrl);
-  const response = await fetch(apiUrl);
-  if (!response.ok) throw new Error("Failed to fetch file list");
-  const data = await response.text();
-  return JSON.parse(data);
-}
-
-async function initClient(agentData) {
+async function initClient() {
   try {
-    console.log("Initializing client...", agentData);
-    const client = await create(agentData);
-    console.log("Client created:", client);
+    console.log("Initializing client…");
+    // Create a persistent client (uses IndexedDB under the hood)
+    const client = await create();
+    console.log("Client ready:", client);
+    // Prompt user for email and perform login
+    const email = prompt("Enter your email to login:");
+    if (email) {
+      console.log("Logging in with:", email);
+      const account = await client.login(email);
+      console.log("Login successful:", account);
+      // If account requires plan selection, wait for plan
+      if (account.plan) {
+        await account.plan.wait();
+        console.log("Payment plan confirmed");
+      }
+    } else {
+      console.warn("No email provided, skipping login");
+    }
 
-    // Show the app section.
+    // Show the app
     document.getElementById("appSection").style.display = "block";
 
-    // Get agent info (falling back to internal _agent if needed).
-    const agent = client.agent || client._agent;
-    console.log(agent)
-    const agentInfoDiv = document.getElementById("agentInfo");
-    if (agent && agent.id) {
-      agentInfoDiv.textContent = `Signed in as: ${agent.id.toString()}`;
-      console.log("Agent info set:", agent.id.toString());
-    } else {
-      // agentInfoDiv.textContent = "Agent info not available.";
-      // console.log("Agent info not found in client.");
+    // Display agent DID
+    const signer = client.agent;
+    if (signer?.did) {
+      document.getElementById("agentInfo")
+              .textContent = `Signed in as: ${signer.did()}`;
     }
-    // List spaces.
+
+    // List your spaces
     listSpaces(client);
   } catch (err) {
     console.error("Error initializing client:", err);
@@ -61,114 +58,98 @@ async function initClient(agentData) {
 }
 
 function listSpaces(client) {
-  try {
-    const spaces = client.spaces();
-    console.log("Spaces found:", spaces);
-    const spacesListDiv = document.getElementById("spacesList");
-    spacesListDiv.innerHTML = "";
-    if (spaces.length === 0) {
-      spacesListDiv.textContent = "No spaces found.";
-    } else {
-      spaces.forEach((space) => {
-        console.log(space.meta());
-        const div = document.createElement("div");
-        div.textContent = space.name || space.did;
-        div.style.cursor = "pointer";
-        div.onclick = async () => {
-          await client.setCurrentSpace(space.did());
-          // Clear previous uploads and load uploads for the selected space.
-          const detailsDiv = document.getElementById("spaceDetails");
-          detailsDiv.innerHTML = `<h3>Uploads for ${space.name || space.did}</h3>`;
-          showUploads(client, space);
-        };
-        spacesListDiv.appendChild(div);
-      });
-    }
-  } catch (err) {
-    console.error("Error listing spaces:", err);
+  const spaces = client.spaces();
+  const container = document.getElementById("spacesList");
+  container.innerHTML = "";
+
+  if (!spaces.length) {
+    container.textContent = "No spaces found.";
+    return;
   }
+
+  spaces.forEach(space => {
+    const btn = document.createElement("button");
+    btn.textContent = space.name || space.did();
+    btn.onclick = async () => {
+      // Switch to that space
+      await client.setCurrentSpace(space.did());
+      // Clear previous details
+      const details = document.getElementById("spaceDetails");
+      details.innerHTML = `<h3>Uploads in ${space.name || space.did()}</h3>`;
+      // Show uploads
+      showUploads(client);
+    };
+    container.appendChild(btn);
+  });
 }
 
-async function showUploads(client, space, cursor = null) {
-    try {
-      const detailsDiv = document.getElementById("spaceDetails");
-      // Create or reuse the UL for uploads.
-      let ul = document.getElementById("uploadList");
-      if (!ul) {
-        ul = document.createElement("ul");
-        ul.id = "uploadList";
-        detailsDiv.appendChild(ul);
-      } else if (!cursor) {
-        ul.innerHTML = "";
-      }
-      
-      // Load all uploads at once.
-      const uploads = await loadAllUploads(client);
-      console.log("All uploads:", uploads);
-      if (uploads.length === 0 && !cursor) {
-        ul.innerHTML = `<li>No uploads found in this space.</li>`;
-        return;
-      }
-      
-      // Sort uploads by insertedAt descending.
-      uploads.sort((a, b) => new Date(b.insertedAt) - new Date(a.insertedAt));
-      
-      uploads.forEach((upload) => {
-        const cidStr = upload.root && upload.root.toString ? upload.root.toString() : upload.root;
-        if (document.getElementById("upload-" + cidStr)) return;
-        
-        const li = document.createElement("li");
-        li.id = "upload-" + cidStr;
-        // Build the URL for directory view.
-        const url = `https://${cidStr}.ipfs.w3s.link/`;
-        console.log("Generating URL for CID:", cidStr, "=>", url);
-        li.innerHTML = `<strong>Root CID:</strong> <a href="${url}" target="_blank">${cidStr}</a><br>
-                        <strong>Size:</strong> ${upload.size} bytes<br>
-                        <strong>Inserted At:</strong> ${upload.insertedAt}<br>`;
-        
-        // Create a dropdown button that embeds an iframe with the directory view.
-        const toggleButton = document.createElement("button");
-        toggleButton.textContent = "Show Files";
-        toggleButton.style.marginTop = "5px";
-        toggleButton.onclick = () => {
-          let iframe = li.querySelector("iframe");
-          if (iframe) {
-            if (iframe.style.display === "none") {
-              iframe.style.display = "block";
-              toggleButton.textContent = "Hide Files";
-            } else {
-              iframe.style.display = "none";
-              toggleButton.textContent = "Show Files";
-            }
-            return;
-          }
-          // Create iframe and set its src to the directory URL.
+async function showUploads(client) {
+  const details = document.getElementById("spaceDetails");
+  // Remove old list if any
+  let ul = details.querySelector("ul");
+  if (ul) ul.remove();
+
+  ul = document.createElement("ul");
+  details.appendChild(ul);
+
+  try {
+    const uploads = await loadAllUploads(client);
+    if (!uploads.length) {
+      ul.innerHTML = `<li>No uploads found.</li>`;
+      return;
+    }
+
+    // Sort descending by insertedAt
+    uploads.sort((a, b) =>
+      new Date(b.insertedAt) - new Date(a.insertedAt)
+    );
+
+    uploads.forEach(upload => {
+      const cid = upload.root.toString();
+      const url = `https://${cid}.ipfs.w3s.link/`;  // directory view
+
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <strong>Root CID:</strong>
+          <a href="${url}" target="_blank">${cid}</a><br>
+        <strong>Size:</strong> ${upload.size} bytes<br>
+        <strong>Inserted At:</strong> ${upload.insertedAt}<br>
+      `;
+
+      // "Show Files" button that toggles an embedded iframe
+      const toggle = document.createElement("button");
+      toggle.textContent = "Show Files";
+      toggle.onclick = () => {
+        let iframe = li.querySelector("iframe");
+        if (!iframe) {
           iframe = document.createElement("iframe");
           iframe.src = url;
           iframe.style.width = "100%";
-          iframe.style.height = "400px"; // Adjust height as needed.
+          iframe.style.height = "300px";
           iframe.style.border = "1px solid #ccc";
           li.appendChild(iframe);
-          toggleButton.textContent = "Hide Files";
-        };
-        li.appendChild(toggleButton);
-        li.style.marginBottom = "10px";
-        ul.appendChild(li);
-      });
-      
-      // Pagination: if a cursor exists, you might implement "Load More" here.
-      // For now, we're loading all uploads via loadAllUploads().
-      console.log("Uploads displayed for space", space.did());
-    } catch (err) {
-      console.error("Error fetching uploads:", err);
-    }
+          toggle.textContent = "Hide Files";
+        } else {
+          const showing = iframe.style.display !== "none";
+          iframe.style.display = showing ? "none" : "block";
+          toggle.textContent = showing ? "Show Files" : "Hide Files";
+        }
+      };
+      li.appendChild(toggle);
+
+      ul.appendChild(li);
+    });
+  } catch (err) {
+    console.error("Error fetching uploads:", err);
+    ul.innerHTML = `<li>Error loading uploads.</li>`;
   }
+}
 
-// Initialize client using persistent state.
-initClient({ id: "your-agent-id" });
+// Kick things off
+initClient();
 
 
-// Modal functionality
+// Learning Modal functionality
 document.addEventListener("DOMContentLoaded", () => {
   const modal = document.getElementById("modal");
   const infoButton = document.getElementById("infoButton");

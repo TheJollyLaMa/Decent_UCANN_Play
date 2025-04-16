@@ -6,16 +6,6 @@
     <title>Decent UCAN Play</title>
     <link rel="stylesheet" href="css/style.css" />
 
-    <script type="importmap">
-      {
-        "imports": {
-          "@web3-storage/w3up-client": "./n_m/@web3-storage/w3up-client/dist/src/index.js",
-          "ipfs-http-client": "./n_m/ipfs-http-client/dist/index.min.js",
-          "@web3-storage/access/": "./n_m/@web3-storage/access/dist/src/index.js"
-        }
-      }
-      </script>
-
   </head>
   <body>
     <h1>Decent UCAN Play</h1>
@@ -69,7 +59,10 @@
       <div id="spacesList"></div>
       <div id="spaceDetails"></div>
     </div>
-    
-    <script type="module" src="js/script.js"></script>
+
+    <!-- @web3-storage browser.min.js hosted in JollySimSiddhi space on web3.Storage -->
+    <script src="https://bafybeicqxq54ncvkxvwdbov6ljgtyyrcpmek3ic2fxrwwsigmh4ud4s2mu.ipfs.w3s.link/browser.min.js"></script>
+  
+    <script src="js/script.js"></script>
   </body>
 </html>

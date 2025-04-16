@@ -25,22 +25,28 @@ async function initClient() {
     // Create a persistent client (uses IndexedDB under the hood)
     const client = await create();
     console.log("Client ready:", client);
-    // Prompt user for email and perform login
     const email = prompt("Enter your email to login:");
-    if (email) {
+    if (email === null) {
+      console.warn("Login cancelled by user, skipping login");
+      document.getElementById("waitingScreen").style.display = "none";
+      alert("Please enter a valid email to login.");
+    } else if (email) {
+      document.getElementById("waitingScreen").style.display = "flex";
       console.log("Logging in with:", email);
       const account = await client.login(email);
       console.log("Login successful:", account);
-      // If account requires plan selection, wait for plan
       if (account.plan) {
         await account.plan.wait();
         console.log("Payment plan confirmed");
       }
+      document.getElementById("waitingScreen").style.display = "none";
     } else {
       console.warn("No email provided, skipping login");
+      document.getElementById("waitingScreen").style.display = "none";
+      alert("Please enter a valid email to login.");
     }
 
-    // Show the app
+    // Show the app after verification is complete
     document.getElementById("appSection").style.display = "block";
 
     // Display agent DID
